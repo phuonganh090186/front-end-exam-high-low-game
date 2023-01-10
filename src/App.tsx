@@ -1,5 +1,7 @@
 import { Box, Flex, Center, Heading, Button, Stack } from "@chakra-ui/react";
+import { useMachine } from "@xstate/react";
 import { RiArrowDownSLine, RiArrowUpSLine } from "react-icons/ri";
+import { assign, createMachine } from "xstate";
 
 /*
 ## 需求:
@@ -53,7 +55,127 @@ import { RiArrowDownSLine, RiArrowUpSLine } from "react-icons/ri";
     - document：https://xstate.js.org/docs/
 */
 
+enum GameAction {
+  Higher = "Higher",
+  Lower = "Lower",
+}
+
+const getGameResult = (
+  action: GameAction,
+  leftNumber?: number,
+  rightNumber?: number
+) => {
+  if (
+    leftNumber == undefined ||
+    rightNumber == undefined ||
+    leftNumber == rightNumber
+  ) {
+    return false;
+  }
+
+  switch (action) {
+    case GameAction.Higher:
+      if (rightNumber > leftNumber) return true;
+      break;
+    case GameAction.Lower:
+      if (rightNumber < leftNumber) return true;
+      break;
+    default:
+      break;
+  }
+  return false;
+};
+
+interface AppContext {
+  leftNumber?: number;
+  rightNumber?: number;
+  isWin: boolean;
+}
+
+type AppEventType =
+  | "START_GAME"
+  | "SELECT_HIGHER"
+  | "SELECT_LOWER"
+  | "START_AGAIN";
+
+interface AppEvent {
+  type: AppEventType;
+}
+
+const appMachine = createMachine<AppContext, AppEvent>(
+  {
+    id: "appState",
+    initial: "start",
+    context: {
+      leftNumber: undefined,
+      rightNumber: undefined,
+      isWin: false,
+    },
+    states: {
+      start: {
+        on: {
+          START_GAME: {
+            target: "playing",
+            actions: "genLeftNumber",
+          },
+        },
+      },
+      playing: {
+        on: {
+          SELECT_HIGHER: {
+            actions: "selectHigher",
+            target: "finished",
+          },
+          SELECT_LOWER: {
+            actions: "selectLower",
+            target: "finished",
+          },
+        },
+      },
+      finished: {
+        on: {
+          START_AGAIN: {
+            target: "playing",
+            actions: "genLeftNumber",
+          },
+        },
+      },
+    },
+  },
+  {
+    actions: {
+      selectHigher: assign((context) => {
+        const numberB = Math.floor(Math.random() * 10) + 1;
+        return {
+          rightNumber: numberB,
+          isWin: getGameResult(GameAction.Higher, context.leftNumber, numberB),
+        };
+      }),
+      selectLower: assign((context) => {
+        const numberB = Math.floor(Math.random() * 10) + 1;
+        return {
+          rightNumber: numberB,
+          isWin: getGameResult(GameAction.Lower, context.leftNumber, numberB),
+        };
+      }),
+      genLeftNumber: assign((context) => {
+        return {
+          leftNumber: Math.floor(Math.random() * 10) + 1,
+          rightNumber: undefined,
+          isWin: false,
+        };
+      }),
+    },
+  }
+);
+
 const App = () => {
+  const [current, send] = useMachine(appMachine);
+  const start = current.matches("start");
+  const playing = current.matches("playing");
+  const finished = current.matches("finished");
+  const { leftNumber, rightNumber, isWin } = current.context;
+
   return (
     <Box bgColor="#f3f3f3" h="100vh">
       <Center pt="120px">
@@ -79,7 +201,7 @@ const App = () => {
                 flex={1}
               >
                 <Heading fontSize="54px" color="gray.500">
-                  ?
+                  {leftNumber != undefined ? leftNumber : "?"}
                 </Heading>
               </Center>
             </Flex>
@@ -94,59 +216,77 @@ const App = () => {
                 boxShadow="lg"
               >
                 <Heading fontSize="54px" color="blue.500">
-                  ?
+                  {rightNumber != undefined ? rightNumber : "?"}
                 </Heading>
               </Center>
 
               {/* `Higher` and `Lower` buttons UI */}
-              {/* <Button
-                mt="32px"
-                colorScheme="twitter"
-                leftIcon={<RiArrowUpSLine />}
-                isFullWidth
-              >
-                Higher
-              </Button>
-              <Button
-                mt="8px"
-                colorScheme="facebook"
-                leftIcon={<RiArrowDownSLine />}
-                isFullWidth
-              >
-                Lower
-              </Button> */}
+              {playing && (
+                <Stack>
+                  <Button
+                    mt="32px"
+                    colorScheme="twitter"
+                    leftIcon={<RiArrowUpSLine />}
+                    isFullWidth
+                    onClick={() => {
+                      send("SELECT_HIGHER");
+                    }}
+                  >
+                    Higher
+                  </Button>
+                  <Button
+                    mt="8px"
+                    colorScheme="facebook"
+                    leftIcon={<RiArrowDownSLine />}
+                    isFullWidth
+                    onClick={() => {
+                      send("SELECT_LOWER");
+                    }}
+                  >
+                    Lower
+                  </Button>
+                </Stack>
+              )}
             </Flex>
           </Flex>
 
-          <Box mt="64px">
-            <Button
-              colorScheme="blue"
-              onClick={() => {
-                // TODO: Start a new game
-              }}
-            >
-              Start Game
-            </Button>
-          </Box>
+          {start && (
+            <Box mt="64px">
+              <Button
+                colorScheme="blue"
+                onClick={() => {
+                  send("START_GAME");
+                }}
+              >
+                Start Game
+              </Button>
+            </Box>
+          )}
 
           {/* Game result UI */}
-          {/* <Stack mt="24px" spacing="16px">
-            <Heading color="twitter.300" align="center">
-              WIN!
-            </Heading>
-            <Heading color="red.300" align="center">
-              LOSE!
-            </Heading>
+          {finished && (
+            <Stack mt="24px" spacing="16px">
+              {isWin && (
+                <Heading color="twitter.300" align="center">
+                  WIN!
+                </Heading>
+              )}
+              {!isWin && (
+                <Heading color="red.300" align="center">
+                  LOSE!
+                </Heading>
+              )}
 
-            <Button
-              colorScheme="blue"
-              onClick={() => {
-                // TODO: Clear game result and start a new game
-              }}
-            >
-              Play Again
-            </Button>
-          </Stack> */}
+              <Button
+                colorScheme="blue"
+                onClick={() => {
+                  send("START_AGAIN");
+                }}
+              >
+                Play Again
+              </Button>
+            </Stack>
+          )}
         </Flex>
       </Center>
     </Box>
